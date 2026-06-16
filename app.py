@@ -7,82 +7,88 @@ st.title("📊 Roster Auto Analyzer")
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
 def extract_time(cell):
-    if isinstance(cell, str):
-        m = re.search(r"(\\d{4})-(\\d{4})", cell)
-        if m:
-            return m.group(1)
+    text = str(cell)
+
+    # ✅ 放鬆匹配（只要有4位數字-4位數字）
+    m = re.search(r"(\\d{3,4})\\s*-\\s*(\\d{3,4})", text)
+    if m:
+        return m.group(1).zfill(4)  # 補0 → 730變0730
+
     return None
 
-def detect_rank(text):
-    text = str(text).upper()
-    if "SUP" in text:
+def detect_rank(row_text):
+    row_text = str(row_text).upper()
+
+    if "SUP" in row_text:
         return "SUP"
-    elif "SEQO" in text:
+    elif "SEQO" in row_text:
         return "SEQO"
-    elif "EQO" in text:
+    elif "EQO" in row_text:
         return "EQO"
-    elif "CHR" in text or "TLR" in text:
+    elif "CHR" in row_text or "TLR" in row_text:
         return "CHR"
+
     return None
+
 
 if uploaded_file:
 
-    try:
-        df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+    df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
 
-        records = []
+    records = []
 
-        for sheet_name, df in df_all.items():
+    for sheet_name, df in df_all.items():
 
-            st.write(f"🔍 正在分析 Sheet: {sheet_name}")
+        st.write(f"🔍 分析 Sheet: {sheet_name}")
 
-            for r in range(df.shape[0]):
-                for c in range(df.shape[1]):
+        for r in range(df.shape[0]):
 
-                    cell = df.iat[r, c]
+            row = df.iloc[r]
+            row_text = " ".join([str(x) for x in row.values])
 
-                    start = extract_time(cell)
+            rank = detect_rank(row_text)
 
-                    if start:
-                        cell_text = str(cell).upper()
+            if not rank:
+                continue
 
-                        if any(x in cell_text for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
-                            continue
+            for cell in row:
 
-                        # ✅ 用 row context 判斷 rank
-                        row_text = " ".join([str(x) for x in df.iloc[r].values])
-                        rank = detect_rank(row_text)
+                start = extract_time(cell)
 
-                        if not rank:
-                            continue
+                if start:
 
-                        hour = start[:2] + ":00"
+                    text = str(cell).upper()
 
-                        records.append([hour, rank])
+                    if any(x in text for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
+                        continue
 
-        st.write(f"✅ 找到 records: {len(records)}")   # 🔥 debug
+                    hour = start[:2] + ":00"
 
-        if len(records) == 0:
-            st.error("⚠️ 讀到 Excel，但找不到任何 shift（格式未match）")
-        else:
-            result = pd.DataFrame(records, columns=["Time","Rank"])
+                    records.append([hour, rank])
 
-            pivot = result.pivot_table(index="Time",
-                                       columns="Rank",
-                                       aggfunc=len,
-                                       fill_value=0)
+                    # ✅ debug：顯示讀到嘅shift
+                    st.write(f"✅ 找到: {cell} → {hour} ({rank})")
 
-            pivot["TOTAL"] = pivot.sum(axis=1)
-            pivot = pivot.sort_index()
+    st.write(f"📊 總 records: {len(records)}")
 
-            st.subheader("📋 Result")
-            st.dataframe(pivot)
+    if len(records) == 0:
+        st.error("❌ 完全匹配不到 shift → 需要再微調格式規則")
+    else:
+        result = pd.DataFrame(records, columns=["Time","Rank"])
 
-            st.subheader("📈 Trend")
-            st.line_chart(pivot["TOTAL"])
+        pivot = result.pivot_table(index="Time",
+                                   columns="Rank",
+                                   aggfunc=len,
+                                   fill_value=0)
 
-            st.subheader("🔥 Peak")
-            st.success(pivot["TOTAL"].idxmax())
+        pivot["TOTAL"] = pivot.sum(axis=1)
+        pivot = pivot.sort_index()
 
-    except Exception as e:
-        st.error(f"❌ 出錯：{e}")
+        st.subheader("📋 Result")
+        st.dataframe(pivot)
+
+        st.subheader("📈 Trend")
+        st.line_chart(pivot["TOTAL"])
+
+        st.subheader("🔥 Peak")
+        st.success(pivot["TOTAL"].idxmax())
