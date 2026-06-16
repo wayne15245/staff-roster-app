@@ -6,48 +6,47 @@ st.title("📊 Roster Auto Analyzer")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
-def extract_time(cell):
+def extract_time_any(text):
 
-    # ✅ 1. 原始值
-    text = str(cell)
+    text = str(text)
 
-    # ✅ 2. 嘗試抓完整 datetime
-    m_dt = re.search(r"(\\d{1,2}):(\\d{2})", text)
-    if m_dt:
-        hour = m_dt.group(1).zfill(2)
-        return hour + "00"
-
-    # ✅ 3. 抓 0730-1630
-    m = re.search(r"(\\d{3,4})-(\\d{3,4})", text)
+    # ✅ 1. 0730-1630
+    m = re.search(r"(\\d{3,4})\\s*-\\s*(\\d{3,4})", text)
     if m:
         return m.group(1).zfill(4)
 
-    # ✅ 4. 抓純數字 730 / 0730
-    m2 = re.match(r"^\\d{3,4}$", text.strip())
+    # ✅ 2. 07:30
+    m2 = re.search(r"(\\d{1,2}):(\\d{2})", text)
     if m2:
-        return m2.group().zfill(4)
+        return m2.group(1).zfill(2) + "00"
+
+    # ✅ 3. 單獨時間（730 / 0730）
+    m3 = re.search(r"\\b(\\d{3,4})\\b", text)
+    if m3:
+        val = m3.group(1)
+        if 3 <= len(val) <= 4:
+            return val.zfill(4)
 
     return None
 
 
-def detect_rank(row_text):
-    row_text = str(row_text).upper()
+def detect_rank(text):
+    text = str(text).upper()
 
-    if "SUP" in row_text:
+    if "SUP" in text:
         return "SUP"
-    elif "SEQO" in row_text:
+    elif "SEQO" in text:
         return "SEQO"
-    elif "EQO" in row_text:
+    elif "EQO" in text:
         return "EQO"
-    elif "CHR" in row_text or "TLR" in row_text:
+    elif "CHR" in text or "TLR" in text:
         return "CHR"
-
     return None
 
 
 if uploaded_file:
 
-    df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+    df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None, dtype=str)
 
     records = []
 
@@ -57,20 +56,44 @@ if uploaded_file:
 
         for r in range(df.shape[0]):
 
-            row = df.iloc[r]
-            row_text = " ".join([str(x) for x in row.values])
+            row = df.iloc[r].fillna("")
+            row_text = " ".join(row.values)
 
             rank = detect_rank(row_text)
 
             if not rank:
                 continue
 
-            for c in range(df.shape[1]):
+            # ✅ 🔥 關鍵改動：掃整行文字（唔逐cell）
+            start = extract_time_any(row_text)
 
-                cell = df.iat[r, c]
-                start = extract_time(cell)
+            if start:
 
-                if start:
+                hour = start[:2] + ":00"
+                records.append([hour, rank])
 
-                    text = str(cell).upper()
+                st.write(f"✅ {row_text[:50]} → {hour} ({rank})")
 
+    st.write(f"📊 records: {len(records)}")
+
+    if len(records) == 0:
+        st.error("❗ 呢份 roster 用非常特殊格式（可能係 merge + display only）")
+    else:
+        result = pd.DataFrame(records, columns=["Time","Rank"])
+
+        pivot = result.pivot_table(index="Time",
+                                   columns="Rank",
+                                   aggfunc=len,
+                                   fill_value=0)
+
+        pivot["TOTAL"] = pivot.sum(axis=1)
+        pivot = pivot.sort_index()
+
+        st.subheader("📋 Result")
+        st.dataframe(pivot)
+
+        st.subheader("📈 Trend")
+        st.line_chart(pivot["TOTAL"])
+
+        st.subheader("🔥 Peak")
+        st.success(pivot["TOTAL"].idxmax())
