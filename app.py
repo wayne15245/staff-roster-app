@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.title("📊 Roster Analyzer (FINAL SUCCESS VERSION)")
+st.title("📊 Simple Team Shift Analyzer")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
-# ✅ detect rank
-def detect_rank(text):
+
+def classify_rank(text):
     text = str(text).upper()
     if "SUP" in text:
         return "SUP"
@@ -15,114 +15,72 @@ def detect_rank(text):
         return "SEQO"
     elif "EQO" in text:
         return "EQO"
-    elif "CHR" in text or "TLR" in text:
+    elif "CHR" in text:
         return "CHR"
     return None
 
-# ✅ detect date columns
-def detect_date_cols(df):
-    cols = {}
-    for c in range(df.shape[1]):
-        for r in range(5):
-            val = str(df.iat[r, c])
-            if re.search(r"\d{1,2}-[A-Za-z]{3}-\d{2}", val):
-                cols[c] = val
-    return cols
-
-# ✅ extract shift
-def extract_shift(text):
-    m = re.search(r"(\d{3,4})-(\d{3,4})", str(text))
-    if m:
-        return m.group(1).zfill(4), m.group(2).zfill(4)
-    return None, None
-
-# ✅ split time
-def split_hours(start, end):
-    s = int(start[:2])
-    e = int(end[:2])
-    if e < s:
-        e += 24
-    return [f"{h%24:02d}:00" for h in range(s, e)]
 
 if uploaded_file:
 
-    df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+    df = pd.read_excel(uploaded_file, sheet_name="Team C-F", header=None)
 
-    records = []
+    results = {}
 
-    for sheet_name, df in df_all.items():
+    for r in range(len(df)):
 
-        st.subheader(f"🔍 Sheet: {sheet_name}")
+        cell = str(df.iat[r, 0])  # column A
 
-        date_cols = detect_date_cols(df)
+        # ✅ 發現 Team C / D
+        if re.match(r"^[CDEF]$", cell.strip()):
 
-        if not date_cols:
-            continue
+            team = f"Team {cell.strip()}"
 
-        st.write(f"📅 日期欄位: {date_cols}")
+            # ✅ shift 在下一行
+            shift_row = r + 1
+            shifts = df.iloc[shift_row, 1:8].values  # B-H
 
-        rows, cols = df.shape
+            for i, shift in enumerate(shifts):
 
-        for r in range(rows):
-
-            row_text = " ".join([str(x) for x in df.iloc[r].values])
-
-            rank = detect_rank(row_text)
-
-            if not rank:
-                continue
-
-            # ✅ 向下找 shift（最關鍵）
-            for offset in range(1, 4):
-
-                if r + offset >= rows:
+                if pd.isna(shift):
                     continue
 
-                next_row = df.iloc[r + offset]
+                shift = str(shift)
 
-                for c in date_cols:
+                if "OFF" in shift:
+                    continue
 
-                    cell = next_row[c]
+                day = f"{22+i}/6"
 
-                    if str(cell).strip() == "":
-                        continue
+                key = (day, team, shift)
 
-                    if any(x in str(cell).upper() for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
-                        continue
+                if key not in results:
+                    results[key] = {
+                        "SUP":0,
+                        "SEQO":0,
+                        "EQO":0,
+                        "CHR":0
+                    }
 
-                    start, end = extract_shift(cell)
+                # ✅ 向下掃人員
+                for rr in range(r+2, r+20):
 
-                    if not start:
-                        continue
+                    val = str(df.iat[rr, 8])  # Column I
 
-                    hours = split_hours(start, end)
+                    rank = classify_rank(val)
 
-                    for h in hours:
-                        records.append([h, rank])
+                    if rank:
+                        results[key][rank] += 1
 
-                    st.write(f"✅ {cell} → {hours} ({rank})")
+    # ✅ 顯示結果
+    for (day, team, shift), counts in results.items():
 
-    st.write(f"📊 Total records: {len(records)}")
+        st.write(f"### 📅 {day}")
+        st.write(f"{team} → {shift}")
 
-    if records:
-        df_result = pd.DataFrame(records, columns=["Time","Rank"])
+        st.write(f"SUP: {counts['SUP']}")
+        st.write(f"SEQO: {counts['SEQO']}")
+        st.write(f"EQO: {counts['EQO']}")
+        st.write(f"CHR: {counts['CHR']}")
 
-        pivot = df_result.pivot_table(index="Time",
-                                      columns="Rank",
-                                      aggfunc=len,
-                                      fill_value=0)
-
-        pivot["TOTAL"] = pivot.sum(axis=1)
-        pivot = pivot.sort_index()
-
-        st.subheader("📋 人手分析")
-        st.dataframe(pivot)
-
-        st.subheader("📈 趨勢")
-        st.line_chart(pivot["TOTAL"])
-
-        st.subheader("🔥 高峰")
-        st.success(pivot["TOTAL"].idxmax())
-
-    else:
-        st.error("❗ 如果仲係0，我可以幫你做到完全 custom 版（最後1%）")
+        st.write("---")
+``
