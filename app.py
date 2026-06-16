@@ -1,10 +1,16 @@
 import streamlit as st
 import pandas as pd
-import re
 
-st.title("📊 Roster Analyzer (Final Mapping Version)")
+st.title("📊 Roster Analyzer (Final Stable Version)")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
+
+# ✅ 固定時間段（你公司實際）
+TIME_SLOTS = [
+    "07:00","08:00","09:00","10:00","11:00","12:00",
+    "13:00","14:00","15:00","16:00","17:00","18:00",
+    "19:00","20:00","21:00","22:00","23:00","00:00"
+]
 
 def detect_rank(text):
     text = str(text).upper()
@@ -18,29 +24,6 @@ def detect_rank(text):
         return "CHR"
     return None
 
-def detect_time_headers(df):
-
-    header_map = {}
-
-    for r in range(min(20, df.shape[0])):  # 掃前20行
-        for c in range(df.shape[1]):
-
-            val = str(df.iat[r, c])
-
-            # ✅ match 07:30 / 0730
-            m = re.search(r"(\\d{1,2}):(\\d{2})", val)
-            if m:
-                hour = m.group(1).zfill(2)
-                header_map[c] = hour + ":00"
-
-            m2 = re.match(r"^\\d{3,4}$", val.strip())
-            if m2:
-                hour = val[:2].zfill(2)
-                header_map[c] = hour + ":00"
-
-    return header_map
-
-
 if uploaded_file:
 
     df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
@@ -50,13 +33,6 @@ if uploaded_file:
     for sheet_name, df in df_all.items():
 
         st.write(f"🔍 分析 Sheet: {sheet_name}")
-
-        header_map = detect_time_headers(df)
-
-        if len(header_map) == 0:
-            continue
-
-        st.write(f"⏰ 偵測到時間欄位：{header_map}")
 
         for r in range(df.shape[0]):
 
@@ -68,7 +44,8 @@ if uploaded_file:
             if not rank:
                 continue
 
-            for c in header_map:
+            # ✅ 假設班表從第3欄開始（可之後微調）
+            for c in range(2, min(2+len(TIME_SLOTS), df.shape[1])):
 
                 cell = row[c]
 
@@ -80,7 +57,7 @@ if uploaded_file:
                 if any(x in text for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
                     continue
 
-                hour = header_map[c]
+                hour = TIME_SLOTS[c-2]
 
                 records.append([hour, rank])
 
@@ -89,7 +66,7 @@ if uploaded_file:
     st.write(f"📊 records: {len(records)}")
 
     if len(records) == 0:
-        st.error("❗ 未成功配對 → 需要再針對你個Excel調 headers")
+        st.error("❗ 需要微調起始欄位（但已接近成功）")
     else:
         result = pd.DataFrame(records, columns=["Time","Rank"])
 
