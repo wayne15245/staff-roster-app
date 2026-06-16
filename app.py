@@ -3,11 +3,11 @@ import pandas as pd
 import re
 from io import BytesIO
 
-st.title("📊 Roster Analyzer (Phase 1 Dashboard)")
+st.title("📊 Roster Analyzer (Hourly Version)")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
-
+# ✅ 分類職級
 def classify_rank(text):
     text = str(text).upper()
 
@@ -19,131 +19,145 @@ def classify_rank(text):
         return "EQO"
     elif "CHR" in text:
         return "CHR"
-    else:
-        return None
 
+    return None
 
-def convert_to_excel(df_result, summary):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+# ✅ 判斷 shift
+def is_shift(text):
+    return bool(re.search(r"\d{3,4}-\d{3,4}", str(text)))
 
-        df_result.to_excel(writer, index=False, sheet_name="Detail")
-        summary.to_excel(writer, index=False, sheet_name="Summary")
+# ✅ 拆時間
+def split_hours(shift):
 
-    return output.getvalue()
+    m = re.search(r"(\d{3,4})-(\d{3,4})", shift)
 
+    if not m:
+        return []
+
+    start = m.group(1).zfill(4)
+    end = m.group(2).zfill(4)
+
+    sh = int(start[:2])
+    eh = int(end[:2])
+
+    hours = []
+
+    if eh < sh:
+        eh += 24  # 跨日
+
+    for h in range(sh, eh):
+        hours.append(f"{h%24:02d}:00")
+
+    return hours
 
 if uploaded_file:
 
-    all_sheets = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+    df = pd.read_excel(uploaded_file, sheet_name="Team C-F", header=None)
 
-    results = {}
+    results = []
+    hourly_records = []
 
-    for sheet_name, df in all_sheets.items():
+    rows = len(df)
 
-        st.write(f"🔍 分析 Sheet: {sheet_name}")
+    for r in range(rows):
 
-        for r in range(len(df)):
+        cell = str(df.iat[r, 0]).strip()
 
-            cell = str(df.iat[r, 0]).strip()
+        if re.match(r"^[CDEF]$", cell):
 
-            if re.match(r"^[A-Z]$", cell):
+            team = f"Team {cell}"
 
-                team = f"Team {cell}"
+            shift_row = df.iloc[r+1, 1:8]
 
-                if r + 1 >= len(df):
+            # ✅ count team 人數
+            counts = {
+                "SUP": 0,
+                "SEQO": 0,
+                "EQO": 0,
+                "CHR": 0
+            }
+
+            for rr in range(r+2, rows):
+
+                next_cell = str(df.iat[rr, 0]).strip()
+
+                if re.match(r"^[CDEF]$", next_cell):
+                    break
+
+                val = str(df.iat[rr, 8])
+                rank = classify_rank(val)
+
+                if rank:
+                    counts[rank] += 1
+
+            # ✅ 每日 shift
+            for i in range(len(shift_row)):
+
+                shift = shift_row.iloc[i]
+
+                if not is_shift(shift):
                     continue
 
-                shift_row = df.iloc[r + 1, 1:8]
+                day = f"{22+i}/6"
 
-                for i in range(len(shift_row)):
+                total = sum(counts.values())
 
-                    shift = shift_row.iloc[i]
+                results.append({
+                    "Date": day,
+                    "Team": team,
+                    "Shift": shift,
+                    "SUP": counts["SUP"],
+                    "SEQO": counts["SEQO"],
+                    "EQO": counts["EQO"],
+                    "CHR": counts["CHR"],
+                    "TOTAL": total
+                })
 
-                    if pd.isna(shift):
-                        continue
+                # ✅ 🔥 每小時分拆
+                hours = split_hours(shift)
 
-                    shift = str(shift)
+                for h in hours:
+                    hourly_records.append({
+                        "Date": day,
+                        "Hour": h,
+                        "Manpower": total
+                    })
 
-                    if "OFF" in shift:
-                        continue
+    df_result = pd.DataFrame(results)
+    df_hourly = pd.DataFrame(hourly_records)
 
-                    day = f"{22+i}/6"
+    # ✅ 顯示主表
+    st.subheader("📊 Team 分析")
+    st.dataframe(df_result)
 
-                    key = (day, team, shift)
+    # ✅ 每小時合計
+    hourly_summary = df_hourly.groupby(["Date","Hour"])["Manpower"].sum().reset_index()
 
-                    if key not in results:
-                        results[key] = {
-                            "SUP": 0,
-                            "SEQO": 0,
-                            "EQO": 0,
-                            "CHR": 0
-                        }
+    st.subheader("⏰ 每小時人手")
+    st.dataframe(hourly_summary)
 
-                    for rr in range(r+2, min(r+40, len(df))):
+    # ✅ 畫圖
+    pivot = hourly_summary.pivot(index="Hour", columns="Date", values="Manpower")
 
-                        val = str(df.iat[rr, 8])
+    st.subheader("📈 每小時趨勢")
+    st.line_chart(pivot)
 
-                        rank = classify_rank(val)
+    # ✅ Peak
+    peak = hourly_summary.loc[hourly_summary["Manpower"].idxmax()]
 
-                        if rank:
-                            results[key][rank] += 1
+    st.subheader("🔥 高峰時段")
+    st.success(f"{peak['Date']} {peak['Hour']} → {peak['Manpower']}人")
 
-    # ✅ 整合成 DataFrame
-    data = []
+    # ✅ 匯出
+    output = BytesIO()
 
-    for (day, team, shift), counts in results.items():
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_result.to_excel(writer, index=False, sheet_name="Team")
+        hourly_summary.to_excel(writer, index=False, sheet_name="Hourly")
 
-        total = counts["SUP"] + counts["SEQO"] + counts["EQO"] + counts["CHR"]
-
-        data.append({
-            "Date": day,
-            "Team": team,
-            "Shift": shift,
-            "SUP": counts["SUP"],
-            "SEQO": counts["SEQO"],
-            "EQO": counts["EQO"],
-            "CHR": counts["CHR"],
-            "TOTAL": total
-        })
-
-    df_result = pd.DataFrame(data)
-
-    if len(df_result) == 0:
-        st.error("❗ 未找到數據")
-    else:
-
-        # ✅ 顯示全部
-        st.subheader("📊 全數據表")
-        st.dataframe(df_result)
-
-        # ✅ Filter
-        st.subheader("🎯 篩選")
-
-        selected_day = st.selectbox("選擇日期", sorted(df_result["Date"].unique()))
-        selected_team = st.selectbox("選擇 Team", sorted(df_result["Team"].unique()))
-
-        filtered_df = df_result[
-            (df_result["Date"] == selected_day) &
-            (df_result["Team"] == selected_team)
-        ]
-
-        st.dataframe(filtered_df)
-
-        # ✅ Summary
-        summary = df_result.groupby("Date")["TOTAL"].sum().reset_index()
-
-        st.subheader("📈 每日總人手")
-        st.dataframe(summary)
-
-        st.line_chart(summary.set_index("Date"))
-
-        # ✅ Excel 匯出（🔥新功能）
-        excel_data = convert_to_excel(df_result, summary)
-
-        st.download_button(
-            label="📥 下載 Excel 報表",
-            data=excel_data,
-            file_name="Roster_Analysis.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    st.download_button(
+        "📥 下載 Excel",
+        data=output.getvalue(),
+        file_name="Roster_Hourly.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
