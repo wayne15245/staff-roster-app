@@ -1,174 +1,128 @@
-import streamlit as st
-import pandas as pd
-import re
-from io import BytesIO
+imp**t stream**t as st
+**port pan**s as pd
+**port re
+**om io im**rt Bytes**
 
-st.title("📊 Roster Analyzer (Final Working Version)")
+st.tit****Roster A**lyzer (**ean Work**g Versio****
 
-uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
+upload**_file =**t.file_u**oader**Upload E**el",**ype=["xl**","**sm"])
 
-# ✅ 職級分類
-def classify_rank(text):
-    text = str(text).upper()
-    if "SUP" in text: return "SUP"
-    elif "SEQO" in text: return "SEQO"
-    elif "EQO" in text: return "EQO"
-    elif "CHR" in text: return "CHR"
-    return None
+d****lassify_**nk(text)****  text =**tr**ext).**per()
+  **if "SUP"**n text:
+**      re**rn "**P"
+    e**f**SEQO" in**ext:
+**      re**rn "SEQ**
+    eli***EQO"**n text:
+**     **eturn "E**"
+    el****CHR" in**ext:
+   **   retur***CHR"
+   **eturn No**
 
-# ✅ 抽取 shift（任何亂格式都識）
-def extract_shift(text):
-    text = str(text)
-    m = re.search(r"(\d{3,4}-\d{3,4})", text)
-    return m.group(1) if m else None
+def**xtract_s**ft(text)****  text =**tr**ext)
+   ******e.search**"(\\d{3,***\\d{3**})", tex**
+    if ***        **turn m**roup(1)
+**  return**one
 
-# ✅ 拆每小時
-def split_hours(shift):
-    m = re.search(r"(\d{3,4})-(\d{3,4})", shift)
-    if not m: return []
+**f split_**urs(**ift):
+  **m** re.sear**(r**\\d{**4})**\\d**,4})",**hift)
+  **if not m**       **eturn []**   start** int(m.g**up**).z**ll(4)**2])
+   **nd = int****roup(2).***ll(4)**2])
+   **f end < **art**        **d +=**4
+   **eturn [f**h%24:**d}:00**for h in**ange(sta**, end**
 
-    start = int(m.group(1).zfill(4)[:2])
-    end = int(m.group(2).zfill(4)[:2])
+if upl**ded_file**
+    all****ets = pd**ead**xcel(upl**ded_file**sheet_na**=None**header=N**e)
 
-    if end < start:
-        end += 24
+**  result**= [**    hour**_records****]
+    al**ts =**]
 
-    return [f"{h%24:02d}:00" for h in range(start, end)]
+    f** sheet**ame, df ****ll_sheet**items**:
 
-if uploaded_file:
+     ** rows** len(df)**       **or r in **nge**ows):
 
-    df = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+ **        **aw**ell = st**df**at[r,**])
+     **    **ell = ra**cell**trip().u**er()
 
-    results = []
-    hourly_records = []
-    alerts = []
+**        **if len(c**l)**= 0:
+   **        ** continu**
+       **   team_**ar = cel****
 
-    for sheet_name, df in df.items():
+      **    if t**m_char n** in ["C"**"D", "E"**"F"]:
+  **        **  contin**
 
-        rows = len(df)
+      **    team** f"Team**team_cha**"
 
-        for r in range(rows):
+**        **if r +** >= rows**        **      co**inue
 
-            raw_cell = str(df.iat[r, 0])
-            cell = raw_cell.strip().upper()
+**        **shift_ro**=**f.iloc[r****1:8**
+       **   count**= {"SUP**0, "**QO":0**"EQO**0, "**R":0}
 
-            # ✅ ✅ ✅ 最強Team detection
-            if len(cell) == 0:
-                continue
+**        **for rr i***ange(r+2**rows):
 
-            team_char = cell[0]
+**        **   **ext_raw ***tr(df.ia****, 0**.strip()**pper()
 
-            if team_char not in ["C", "D", "E", "F"]:
-                continue
+**        **    if l**(next**aw) > **and next**aw**] in**"C","D**"E","F**:
+      **        **  break
+***        **    rank** classif***ank(df.i**[rr,**])
+     **        **f rank**        **        **counts[**nk] += **
+       **   total** sum(cou**s**alues())**        **  for** in rang**len**hift_row****
+       **       r**_shift** shift_r**.iloc**]
+      **        **ift** extract**hift(raw**hift)
 
-            team = f"Team {team_char}"
+ **        **   if**ot shift**        **        ***ontinue
+**        **     day** f"{22**}/6"
 
-            # ✅ shift row
-            if r+1 >= rows:
-                continue
+**        **    if c**nts["**P"] < **
+       **        ** alerts**ppend(f"**ay**{team}**shift} S****ow")
 
-            shift_row = df.iloc[r+1, 1:8]
+  **        **  if**otal < **
+       **        ** alerts**ppend(f"**ay**{team**manpower**ow")
 
-            # ✅ 計人數（block-based）
-            counts = {"SUP":0, "SEQO":0, "EQO":0, "CHR":0}
+**        **    resu**s.append**
+**        **        **ate":**ay,
+    **        **    "**am": tea**
+       **        ** "**ift** shift,
+**        **        **UP":**ounts["S**"],
+**        **        **EQO** counts[**EQ**],
+     **        **   "**O": coun****EQO"],
+**        **        **HR":**ounts["C**"],
+**        **        **OTAL** total
+ **        **  **)
 
-            for rr in range(r+2, rows):
+     **        **or h in **lit_hour****ift):
+  **        **      ho**ly**ecords.a**end({
+  **        **        ***Date": d****        **        **    "Hou*** h,
+    **        **       **TOTAL": **tal**        **        **)
 
-                next_raw = str(df.iat[rr, 0])
-                next_cell = next_raw.strip().upper()
+   **f_result****d.DataFr**e(result**
+**  df_hou**y** pd.Data**ame**ourly_re**rds)
 
-                if len(next_cell) > 0:
-                    next_char = next_cell[0]
+**  st.wri**("Rows f**nd:", le**df**esult))
+**   st**ubheader**Team**nalysis"**    st**ataframe**f_result**
+    st.**bheader**KPI Aler****
+    if**lerts:
+ **    **or a in**lerts:
+ **        **t.error(**
+    els**
+       **t.succes**"All OK"**
+    if **n(df_hou***) > **
+       **ourly**ummary =**f_hour**.groupby**"Date**"Hour"])**um**.reset_i**ex**
+       **t.sub**ader("Ho**ly")
+**      st**ataframe**ourly_su**ary)
+**      st**ine_char**hour**_summary****ot**ndex="Ho**", colum**="Date",**alues="T**AL**)
+    el**:
+**      st**arning("** hourly **ta")
 
-                    if next_char in ["C","D","E","F"]:
-                        break
+**  output** Bytes**()
 
-                rank = classify_rank(df.iat[rr, 8])
+    **th**d.ExcelW**ter(outp**, engine**openpy**') as wr**er:
+**      df**esult.to**xcel(wri**r, index**alse,**heet_nam**"Team")
+**      if**en(df**ourly) >**:
+      **   **ourly_su**ary.to_e**el**riter, i**ex=False**sheet_na**="**urly")
 
-                if rank:
-                    counts[rank] += 1
-
-            total = sum(counts.values())
-
-            # ✅ 每日處理
-            for i in range(len(shift_row)):
-
-                raw_shift = shift_row.iloc[i]
-                shift = extract_shift(raw_shift)
-
-                if not shift:
-                    continue
-
-                day = f"{22+i}/6"
-
-                # ✅ KPI
-                if counts["SUP"] < 2:
-                    alerts.append(f"🔴 {day} {team} {shift} SUP不足")
-
-                if total < 6:
-                    alerts.append(f"🟠 {day} {team} 人手不足")
-
-                results.append({
-                    "Date": day,
-                    "Team": team,
-                    "Shift": shift,
-                    "SUP": counts["SUP"],
-                    "SEQO": counts["SEQO"],
-                    "EQO": counts["EQO"],
-                    "CHR": counts["CHR"],
-                    "TOTAL": total
-                })
-
-                # ✅ 每小時
-                for h in split_hours(shift):
-                    hourly_records.append({
-                        "Date": day,
-                        "Hour": h,
-                        "TOTAL": total
-                    })
-
-    df_result = pd.DataFrame(results)
-    df_hourly = pd.DataFrame(hourly_records)
-
-    # ✅ Debug（重要！）
-    st.write("DEBUG rows in result:", len(df_result))
-
-    st.subheader("📊 Team 分析")
-    st.dataframe(df_result)
-
-    # ✅ KPI
-    st.subheader("🚨 KPI Alerts")
-    if alerts:
-        for a in alerts:
-            st.error(a)
-    else:
-        st.success("✅ 全部正常")
-
-    # ✅ Hourly
-    if len(df_hourly) > 0:
-        hourly_summary = df_hourly.groupby(["Date","Hour"]).sum().reset_index()
-
-        st.subheader("⏰ 每小時人手")
-        st.dataframe(hourly_summary)
-
-        st.line_chart(
-            hourly_summary.pivot(index="Hour", columns="Date", values="TOTAL")
-        )
-    else:
-        st.warning("❗ 未能產生每小時數據")
-
-    # ✅ Excel
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_result.to_excel(writer, index=False, sheet_name="Team")
-
-        if len(df_hourly) > 0:
-            hourly_summary.to_excel(writer, index=False, sheet_name="Hourly")
-
-    st.download_button(
-        "📥 下載 Excel",
-        data=output.getvalue(),
-        file_name="Roster_Final_Working.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+**  st**ownload_**tton(
+  **   **abel="Do**load Exc****
+**      da**=output.**tvalue**,
+      **file_nam**"Roster**utput.xl**"
     )
-``
+**
