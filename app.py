@@ -1,16 +1,11 @@
 import streamlit as st
 import pandas as pd
+import re
 
-st.title("📊 Roster Analyzer (Final Stable Version)")
+st.title("📊 Roster Analyzer (PRO Version)")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
-# ✅ 固定時間段（你公司實際）
-TIME_SLOTS = [
-    "07:00","08:00","09:00","10:00","11:00","12:00",
-    "13:00","14:00","15:00","16:00","17:00","18:00",
-    "19:00","20:00","21:00","22:00","23:00","00:00"
-]
 
 def detect_rank(text):
     text = str(text).upper()
@@ -24,6 +19,51 @@ def detect_rank(text):
         return "CHR"
     return None
 
+
+def detect_date_headers(df):
+
+    date_cols = {}
+
+    for r in range(5):  # 掃前幾行
+        for c in range(df.shape[1]):
+            val = str(df.iat[r, c])
+
+            # match 22-Jun-26
+            if re.search(r"\\d{1,2}-[A-Za-z]{3}-\\d{2}", val):
+                date_cols[c] = val
+
+    return date_cols
+
+
+def extract_shift(text):
+
+    text = str(text)
+
+    m = re.search(r"(\\d{3,4})-(\\d{3,4})", text)
+    if m:
+        start = m.group(1).zfill(4)
+        end = m.group(2).zfill(4)
+        return start, end
+
+    return None, None
+
+
+def split_hours(start, end):
+
+    start_h = int(start[:2])
+    end_h = int(end[:2])
+
+    hours = []
+
+    if end_h < start_h:  # 跨日
+        end_h += 24
+
+    for h in range(start_h, end_h):
+        hours.append(f"{h % 24:02d}:00")
+
+    return hours
+
+
 if uploaded_file:
 
     df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
@@ -32,7 +72,14 @@ if uploaded_file:
 
     for sheet_name, df in df_all.items():
 
-        st.write(f"🔍 分析 Sheet: {sheet_name}")
+        st.subheader(f"🔍 Sheet: {sheet_name}")
+
+        date_cols = detect_date_headers(df)
+
+        if len(date_cols) == 0:
+            continue
+
+        st.write(f"📅 日期欄位: {date_cols}")
 
         for r in range(df.shape[0]):
 
@@ -44,8 +91,7 @@ if uploaded_file:
             if not rank:
                 continue
 
-            # ✅ 假設班表從第3欄開始（可之後微調）
-            for c in range(2, min(2+len(TIME_SLOTS), df.shape[1])):
+            for c in date_cols:
 
                 cell = row[c]
 
@@ -57,16 +103,22 @@ if uploaded_file:
                 if any(x in text for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
                     continue
 
-                hour = TIME_SLOTS[c-2]
+                start, end = extract_shift(text)
 
-                records.append([hour, rank])
+                if not start:
+                    continue
 
-                st.write(f"✅ Row {r} Col {c} → {hour} ({rank})")
+                hours = split_hours(start, end)
 
-    st.write(f"📊 records: {len(records)}")
+                for h in hours:
+                    records.append([h, rank])
+
+                st.write(f"✅ {text} → {hours} ({rank})")
+
+    st.write(f"📊 Total records: {len(records)}")
 
     if len(records) == 0:
-        st.error("❗ 需要微調起始欄位（但已接近成功）")
+        st.error("❗ 無法解析 → 但已非常接近成功")
     else:
         result = pd.DataFrame(records, columns=["Time","Rank"])
 
@@ -78,7 +130,7 @@ if uploaded_file:
         pivot["TOTAL"] = pivot.sum(axis=1)
         pivot = pivot.sort_index()
 
-        st.subheader("📋 Result")
+        st.subheader("📋 人手表")
         st.dataframe(pivot)
 
         st.subheader("📈 人手趨勢")
