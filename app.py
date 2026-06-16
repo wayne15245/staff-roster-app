@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.title("📊 Roster Analyzer - Simple Version")
+st.title("📊 Roster Analyzer (Phase 1 Dashboard)")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
@@ -30,13 +30,13 @@ if uploaded_file:
 
     for sheet_name, df in all_sheets.items():
 
-        st.write(f"🔍 {sheet_name}")
+        st.write(f"🔍 分析 Sheet: {sheet_name}")
 
         for r in range(len(df)):
 
             cell = str(df.iat[r, 0]).strip()
 
-            # ✅ 找 Team
+            # ✅ 找 Team（A, B, C...）
             if re.match(r"^[A-Z]$", cell):
 
                 team = f"Team {cell}"
@@ -48,7 +48,6 @@ if uploaded_file:
 
                 for i in range(len(shift_row)):
 
-                    # ✅ 🔥 FIX 在這裡
                     shift = shift_row.iloc[i]
 
                     if pd.isna(shift):
@@ -71,7 +70,7 @@ if uploaded_file:
                             "CHR": 0
                         }
 
-                    # ✅ 掃 Column I
+                    # ✅ 向下掃 Column I
                     for rr in range(r+2, min(r+40, len(df))):
 
                         val = str(df.iat[rr, 8])
@@ -81,17 +80,54 @@ if uploaded_file:
                         if rank:
                             results[key][rank] += 1
 
-    # ✅ 顯示
-    for key in results:
+    # =========================
+    # ✅ Phase 1 升級開始
+    # =========================
 
-        day, team, shift = key
+    data = []
 
-        st.write(f"### 📅 {day}")
-        st.write(f"{team} → {shift}")
+    for (day, team, shift), counts in results.items():
 
-        st.write(f"SUP: {results[key]['SUP']}")
-        st.write(f"SEQO: {results[key]['SEQO']}")
-        st.write(f"EQO: {results[key]['EQO']}")
-        st.write(f"CHR: {results[key]['CHR']}")
+        total = counts["SUP"] + counts["SEQO"] + counts["EQO"] + counts["CHR"]
 
-        st.write("---")
+        data.append({
+            "Date": day,
+            "Team": team,
+            "Shift": shift,
+            "SUP": counts["SUP"],
+            "SEQO": counts["SEQO"],
+            "EQO": counts["EQO"],
+            "CHR": counts["CHR"],
+            "TOTAL": total
+        })
+
+    df_result = pd.DataFrame(data)
+
+    if len(df_result) == 0:
+        st.error("❗ 未找到數據")
+    else:
+
+        # ✅ 顯示全部表
+        st.subheader("📊 全數據表")
+        st.dataframe(df_result)
+
+        # ✅ Filter
+        st.subheader("🎯 篩選")
+
+        selected_day = st.selectbox("選擇日期", sorted(df_result["Date"].unique()))
+        selected_team = st.selectbox("選擇 Team", sorted(df_result["Team"].unique()))
+
+        filtered_df = df_result[
+            (df_result["Date"] == selected_day) &
+            (df_result["Team"] == selected_team)
+        ]
+
+        st.dataframe(filtered_df)
+
+        # ✅ Summary
+        summary = df_result.groupby("Date")["TOTAL"].sum().reset_index()
+
+        st.subheader("📈 每日總人手")
+        st.dataframe(summary)
+
+        st.line_chart(summary.set_index("Date"))
