@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+from io import BytesIO
 
 st.title("📊 Roster Analyzer (Phase 1 Dashboard)")
 
@@ -22,6 +23,16 @@ def classify_rank(text):
         return None
 
 
+def convert_to_excel(df_result, summary):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+
+        df_result.to_excel(writer, index=False, sheet_name="Detail")
+        summary.to_excel(writer, index=False, sheet_name="Summary")
+
+    return output.getvalue()
+
+
 if uploaded_file:
 
     all_sheets = pd.read_excel(uploaded_file, sheet_name=None, header=None)
@@ -36,7 +47,6 @@ if uploaded_file:
 
             cell = str(df.iat[r, 0]).strip()
 
-            # ✅ 找 Team（A, B, C...）
             if re.match(r"^[A-Z]$", cell):
 
                 team = f"Team {cell}"
@@ -70,7 +80,6 @@ if uploaded_file:
                             "CHR": 0
                         }
 
-                    # ✅ 向下掃 Column I
                     for rr in range(r+2, min(r+40, len(df))):
 
                         val = str(df.iat[rr, 8])
@@ -80,10 +89,7 @@ if uploaded_file:
                         if rank:
                             results[key][rank] += 1
 
-    # =========================
-    # ✅ Phase 1 升級開始
-    # =========================
-
+    # ✅ 整合成 DataFrame
     data = []
 
     for (day, team, shift), counts in results.items():
@@ -107,7 +113,7 @@ if uploaded_file:
         st.error("❗ 未找到數據")
     else:
 
-        # ✅ 顯示全部表
+        # ✅ 顯示全部
         st.subheader("📊 全數據表")
         st.dataframe(df_result)
 
@@ -131,3 +137,13 @@ if uploaded_file:
         st.dataframe(summary)
 
         st.line_chart(summary.set_index("Date"))
+
+        # ✅ Excel 匯出（🔥新功能）
+        excel_data = convert_to_excel(df_result, summary)
+
+        st.download_button(
+            label="📥 下載 Excel 報表",
+            data=excel_data,
+            file_name="Roster_Analysis.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
