@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.set_page_config(layout="wide")
 st.title("📊 Roster Auto Analyzer")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
@@ -26,66 +25,64 @@ def detect_rank(text):
         return "CHR"
     return None
 
-def find_rank_upwards(df, row_idx, col_idx):
-    # ✅ 向上找 rank
-    for i in range(row_idx, -1, -1):
-        val = df.iat[i, col_idx]
-        r = detect_rank(val)
-        if r:
-            return r
-    return None
-
 if uploaded_file:
 
-    df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+    try:
+        df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
 
-    records = []
+        records = []
 
-    for sheet_name, df in df_all.items():
+        for sheet_name, df in df_all.items():
 
-        rows, cols = df.shape
+            st.write(f"🔍 正在分析 Sheet: {sheet_name}")
 
-        for r in range(rows):
-            for c in range(cols):
+            for r in range(df.shape[0]):
+                for c in range(df.shape[1]):
 
-                cell = df.iat[r, c]
+                    cell = df.iat[r, c]
 
-                start = extract_time(cell)
+                    start = extract_time(cell)
 
-                if start:
-                    cell_text = str(cell).upper()
+                    if start:
+                        cell_text = str(cell).upper()
 
-                    if any(x in cell_text for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
-                        continue
+                        if any(x in cell_text for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
+                            continue
 
-                    rank = find_rank_upwards(df, r, c)
+                        # ✅ 用 row context 判斷 rank
+                        row_text = " ".join([str(x) for x in df.iloc[r].values])
+                        rank = detect_rank(row_text)
 
-                    if not rank:
-                        continue
+                        if not rank:
+                            continue
 
-                    hour = start[:2] + ":00"
+                        hour = start[:2] + ":00"
 
-                    records.append([hour, rank])
+                        records.append([hour, rank])
 
-    if records:
-        result = pd.DataFrame(records, columns=["Time","Rank"])
+        st.write(f"✅ 找到 records: {len(records)}")   # 🔥 debug
 
-        pivot = result.pivot_table(index="Time",
-                                   columns="Rank",
-                                   aggfunc=len,
-                                   fill_value=0)
+        if len(records) == 0:
+            st.error("⚠️ 讀到 Excel，但找不到任何 shift（格式未match）")
+        else:
+            result = pd.DataFrame(records, columns=["Time","Rank"])
 
-        pivot["TOTAL"] = pivot.sum(axis=1)
-        pivot = pivot.sort_index()
+            pivot = result.pivot_table(index="Time",
+                                       columns="Rank",
+                                       aggfunc=len,
+                                       fill_value=0)
 
-        col1, col2 = st.columns(2)
+            pivot["TOTAL"] = pivot.sum(axis=1)
+            pivot = pivot.sort_index()
 
-        with col1:
             st.subheader("📋 Result")
             st.dataframe(pivot)
 
-        with col2:
+            st.subheader("📈 Trend")
+            st.line_chart(pivot["TOTAL"])
+
             st.subheader("🔥 Peak")
             st.success(pivot["TOTAL"].idxmax())
 
-        st.subheader("📈 Trend")
+    except Exception as e:
+        st.error(f"❌ 出錯：{e}")
