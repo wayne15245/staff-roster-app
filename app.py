@@ -3,11 +3,11 @@ import pandas as pd
 import re
 from io import BytesIO
 
-st.title("📊 Roster Analyzer (Hourly Version)")
+st.title("📊 Roster Analyzer (Hourly + Rank Version)")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
-# ✅ 分類職級
+# ✅ 職級分類
 def classify_rank(text):
     text = str(text).upper()
 
@@ -22,15 +22,15 @@ def classify_rank(text):
 
     return None
 
-# ✅ 判斷 shift
+# ✅ Shift 判斷（純時間）
 def is_shift(text):
-    return bool(re.search(r"\d{3,4}-\d{3,4}", str(text)))
+    text = str(text).strip()
+    return bool(re.match(r"^\d{3,4}-\d{3,4}$", text))
 
 # ✅ 拆時間
 def split_hours(shift):
 
     m = re.search(r"(\d{3,4})-(\d{3,4})", shift)
-
     if not m:
         return []
 
@@ -40,15 +40,15 @@ def split_hours(shift):
     sh = int(start[:2])
     eh = int(end[:2])
 
-    hours = []
-
     if eh < sh:
-        eh += 24  # 跨日
+        eh += 24  # ✅ 跨日
 
+    hours = []
     for h in range(sh, eh):
         hours.append(f"{h%24:02d}:00")
 
     return hours
+
 
 if uploaded_file:
 
@@ -69,13 +69,8 @@ if uploaded_file:
 
             shift_row = df.iloc[r+1, 1:8]
 
-            # ✅ count team 人數
-            counts = {
-                "SUP": 0,
-                "SEQO": 0,
-                "EQO": 0,
-                "CHR": 0
-            }
+            # ✅ 計人數（block）
+            counts = {"SUP":0, "SEQO":0, "EQO":0, "CHR":0}
 
             for rr in range(r+2, rows):
 
@@ -90,7 +85,9 @@ if uploaded_file:
                 if rank:
                     counts[rank] += 1
 
-            # ✅ 每日 shift
+            total = sum(counts.values())
+
+            # ✅ 每日處理
             for i in range(len(shift_row)):
 
                 shift = shift_row.iloc[i]
@@ -99,8 +96,6 @@ if uploaded_file:
                     continue
 
                 day = f"{22+i}/6"
-
-                total = sum(counts.values())
 
                 results.append({
                     "Date": day,
@@ -113,42 +108,56 @@ if uploaded_file:
                     "TOTAL": total
                 })
 
-                # ✅ 🔥 每小時分拆
+                # ✅ 每小時拆分（🔥分職級）
                 hours = split_hours(shift)
 
                 for h in hours:
                     hourly_records.append({
                         "Date": day,
                         "Hour": h,
-                        "Manpower": total
+                        "SUP": counts["SUP"],
+                        "SEQO": counts["SEQO"],
+                        "EQO": counts["EQO"],
+                        "CHR": counts["CHR"],
+                        "TOTAL": total
                     })
 
     df_result = pd.DataFrame(results)
     df_hourly = pd.DataFrame(hourly_records)
 
-    # ✅ 顯示主表
+    # ✅ 主表
     st.subheader("📊 Team 分析")
     st.dataframe(df_result)
 
-    # ✅ 每小時合計
-    hourly_summary = df_hourly.groupby(["Date","Hour"])["Manpower"].sum().reset_index()
+    # =========================
+    # ✅ Hourly（分職級）
+    # =========================
+    if len(df_hourly) > 0:
 
-    st.subheader("⏰ 每小時人手")
-    st.dataframe(hourly_summary)
+        hourly_summary = df_hourly.groupby(["Date","Hour"]).sum().reset_index()
 
-    # ✅ 畫圖
-    pivot = hourly_summary.pivot(index="Hour", columns="Date", values="Manpower")
+        st.subheader("⏰ 每小時人手（分職級）")
+        st.dataframe(hourly_summary)
 
-    st.subheader("📈 每小時趨勢")
-    st.line_chart(pivot)
+        # ✅ 圖（TOTAL）
+        pivot_total = hourly_summary.pivot(index="Hour", columns="Date", values="TOTAL")
+        st.subheader("📈 每小時總人手")
+        st.line_chart(pivot_total)
 
-    # ✅ Peak
-    peak = hourly_summary.loc[hourly_summary["Manpower"].idxmax()]
+        # ✅ SUP chart（例）
+        pivot_sup = hourly_summary.pivot(index="Hour", columns="Date", values="SUP")
+        st.subheader("📈 SUP 每小時")
+        st.line_chart(pivot_sup)
 
-    st.subheader("🔥 高峰時段")
-    st.success(f"{peak['Date']} {peak['Hour']} → {peak['Manpower']}人")
+        # ✅ Peak
+        peak = hourly_summary.loc[hourly_summary["TOTAL"].idxmax()]
+        st.success(f"🔥 高峰：{peak['Date']} {peak['Hour']} → {peak['TOTAL']}人")
 
-    # ✅ 匯出
+    else:
+        st.error("❗ 未能產生每小時數據")
+        hourly_summary = pd.DataFrame()
+
+    # ✅ Excel 匯出
     output = BytesIO()
 
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -158,6 +167,6 @@ if uploaded_file:
     st.download_button(
         "📥 下載 Excel",
         data=output.getvalue(),
-        file_name="Roster_Hourly.xlsx",
+        file_name="Roster_Final_With_Hourly.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
