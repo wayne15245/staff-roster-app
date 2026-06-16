@@ -36,12 +36,11 @@ if uploaded_file:
 
             cell = str(df.iat[r, 0]).strip()
 
-            # ✅ 找 Team（例如 C, D, E）
+            # ✅ 找 Team
             if re.match(r"^[A-Z]$", cell):
 
                 team = f"Team {cell}"
 
-                # ✅ 下一行 = shift
                 if r + 1 >= len(df):
                     continue
 
@@ -49,7 +48,8 @@ if uploaded_file:
 
                 for i in range(len(shift_row)):
 
-                    shift = shift_row[i]
+                    # ✅ 🔥 FIX 在這裡
+                    shift = shift_row.iloc[i]
 
                     if pd.isna(shift):
                         continue
@@ -71,7 +71,7 @@ if uploaded_file:
                             "CHR": 0
                         }
 
-                    # ✅ 向下掃 Column I
+                    # ✅ 掃 Column I
                     for rr in range(r+2, min(r+40, len(df))):
 
                         val = str(df.iat[rr, 8])
@@ -81,7 +81,7 @@ if uploaded_file:
                         if rank:
                             results[key][rank] += 1
 
-    # ✅ 顯示結果
+    # ✅ 顯示
     for key in results:
 
         day, team, shift = key
