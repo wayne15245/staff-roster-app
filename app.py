@@ -3,26 +3,35 @@ import pandas as pd
 import re
 from io import BytesIO
 
-st.title("📊 Roster Analyzer (KPI Version)")
+st.title("📊 Roster Analyzer (KPI Version - Fixed)")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
+
 
 # ✅ 職級分類
 def classify_rank(text):
     text = str(text).upper()
-    if "SUP" in text: return "SUP"
-    elif "SEQO" in text: return "SEQO"
-    elif "EQO" in text: return "EQO"
-    elif "CHR" in text: return "CHR"
+    if "SUP" in text:
+        return "SUP"
+    elif "SEQO" in text:
+        return "SEQO"
+    elif "EQO" in text:
+        return "EQO"
+    elif "CHR" in text:
+        return "CHR"
     return None
 
-# ✅ ✅ Shift標準化（關鍵）
+
+# ✅ ✅ 修正：抽取真正shift
 def extract_shift(text):
     text = str(text)
     m = re.search(r"(\d{3,4}-\d{3,4})", text)
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    return None
 
-# ✅ Shift分類
+
+# ✅ shift分類
 def classify_shift_type(shift):
     start = int(shift.split("-")[0].zfill(4)[:2])
     if 5 <= start < 12:
@@ -32,14 +41,25 @@ def classify_shift_type(shift):
     else:
         return "Night"
 
-# ✅ 拆小時
+
+# ✅ 拆每小時
 def split_hours(shift):
     m = re.search(r"(\d{3,4})-(\d{3,4})", shift)
-    if not m: return []
+    if not m:
+        return []
+
     start = int(m.group(1).zfill(4)[:2])
     end = int(m.group(2).zfill(4)[:2])
-    if end < start: end += 24
-    return [f"{h%24:02d}:00" for h in range(start, end)]
+
+    if end < start:
+        end += 24
+
+    hours = []
+    for h in range(start, end):
+        hours.append(f"{h%24:02d}:00")
+
+    return hours
+
 
 if uploaded_file:
 
@@ -62,18 +82,22 @@ if uploaded_file:
 
             counts = {"SUP":0, "SEQO":0, "EQO":0, "CHR":0}
 
+            # ✅ block內計數
             for rr in range(r+2, rows):
 
                 next_cell = str(df.iat[rr, 0]).strip()
+
                 if re.match(r"^[CDEF]$", next_cell):
                     break
 
                 rank = classify_rank(df.iat[rr, 8])
+
                 if rank:
                     counts[rank] += 1
 
             total = sum(counts.values())
 
+            # ✅ 每日
             for i in range(len(shift_row)):
 
                 raw_shift = shift_row.iloc[i]
@@ -85,12 +109,12 @@ if uploaded_file:
                 day = f"{22+i}/6"
                 shift_type = classify_shift_type(shift)
 
-                # ✅ KPI檢查
+                # ✅ KPI
                 if counts["SUP"] < 2:
-                    alerts.append(f"🔴 {team} {shift} SUP不足")
+                    alerts.append(f"🔴 {day} {team} {shift} SUP不足")
 
                 if total < 6:
-                    alerts.append(f"🟠 {team} {shift} 總人手不足")
+                    alerts.append(f"🟠 {day} {team} 人手不足")
 
                 results.append({
                     "Date": day,
@@ -122,7 +146,7 @@ if uploaded_file:
     st.subheader("📊 Team 分析")
     st.dataframe(df_result)
 
-    # ✅ KPI Alert顯示
+    # ✅ KPI Alert
     st.subheader("🚨 KPI Alerts")
 
     if alerts:
@@ -139,21 +163,24 @@ if uploaded_file:
         st.subheader("⏰ 每小時人手")
         st.dataframe(hourly_summary)
 
-        st.line_chart(hourly_summary.pivot(index="Hour", columns="Date", values="TOTAL"))
+        pivot = hourly_summary.pivot(index="Hour", columns="Date", values="TOTAL")
+        st.line_chart(pivot)
 
     else:
-        st.warning("冇 hourly 數據")
+        st.warning("❗ 未能產生每小時數據")
 
     # ✅ 匯出
     output = BytesIO()
+
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_result.to_excel(writer, index=False, sheet_name="Team")
-        hourly_summary.to_excel(writer, index=False, sheet_name="Hourly")
+
+        if len(df_hourly) > 0:
+            hourly_summary.to_excel(writer, index=False, sheet_name="Hourly")
 
     st.download_button(
         "📥 下載 Excel",
         data=output.getvalue(),
-        file_name="Roster_KPI.xlsx",
+        file_name="Roster_KPI_Final.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-``
