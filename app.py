@@ -1,18 +1,30 @@
 import streamlit as st
 import pandas as pd
 import re
+from datetime import datetime
 
 st.title("📊 Roster Auto Analyzer")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
 def extract_time(cell):
+    # ✅ 1. 處理 datetime / time類型
+    if isinstance(cell, (pd.Timestamp, datetime)):
+        return cell.strftime("%H%M")
+
+    # ✅ 2. 強制轉字串
     text = str(cell)
 
-    # ✅ 放鬆匹配（只要有4位數字-4位數字）
+    # ✅ 3. match 0730-1630
     m = re.search(r"(\\d{3,4})\\s*-\\s*(\\d{3,4})", text)
     if m:
-        return m.group(1).zfill(4)  # 補0 → 730變0730
+        return m.group(1).zfill(4)
+
+    # ✅ 4. match 07:30
+    m2 = re.search(r"(\\d{1,2}):(\\d{2})", text)
+    if m2:
+        h = m2.group(1).zfill(2)
+        return h + "00"
 
     return None
 
@@ -51,7 +63,9 @@ if uploaded_file:
             if not rank:
                 continue
 
-            for cell in row:
+            for c in range(df.shape[1]):
+
+                cell = df.iat[r, c]
 
                 start = extract_time(cell)
 
@@ -66,13 +80,12 @@ if uploaded_file:
 
                     records.append([hour, rank])
 
-                    # ✅ debug：顯示讀到嘅shift
-                    st.write(f"✅ 找到: {cell} → {hour} ({rank})")
+                    st.write(f"✅ {cell} → {hour} ({rank})")  # debug
 
-    st.write(f"📊 總 records: {len(records)}")
+    st.write(f"📊 records: {len(records)}")
 
     if len(records) == 0:
-        st.error("❌ 完全匹配不到 shift → 需要再微調格式規則")
+        st.error("❗ 這份 Excel 用另一種格式（需要最後調整）")
     else:
         result = pd.DataFrame(records, columns=["Time","Rank"])
 
@@ -81,14 +94,3 @@ if uploaded_file:
                                    aggfunc=len,
                                    fill_value=0)
 
-        pivot["TOTAL"] = pivot.sum(axis=1)
-        pivot = pivot.sort_index()
-
-        st.subheader("📋 Result")
-        st.dataframe(pivot)
-
-        st.subheader("📈 Trend")
-        st.line_chart(pivot["TOTAL"])
-
-        st.subheader("🔥 Peak")
-        st.success(pivot["TOTAL"].idxmax())
