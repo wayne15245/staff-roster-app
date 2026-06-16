@@ -3,7 +3,6 @@ import pandas as pd
 import re
 
 st.set_page_config(layout="wide")
-
 st.title("📊 Roster Auto Analyzer")
 
 uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
@@ -15,14 +14,15 @@ def extract_time(cell):
             return match.group(1)
     return None
 
-def detect_rank(row_text):
-    if "SUP" in row_text:
+def detect_rank(text):
+    text = text.upper()
+    if "SUP" in text:
         return "SUP"
-    elif "SEQO" in row_text:
+    elif "SEQO" in text:
         return "SEQO"
-    elif "EQO" in row_text:
+    elif "EQO" in text:
         return "EQO"
-    elif "CHR" in row_text or "TLR" in row_text:
+    elif "CHR" in text or "TLR" in text:
         return "CHR"
     return None
 
@@ -33,23 +33,31 @@ if uploaded_file:
     records = []
 
     for sheet, df in df_all.items():
+        
+        current_rank = None
+
         for i, row in df.iterrows():
-
             row_text = " ".join([str(x) for x in row.values])
-            rank = detect_rank(row_text)
 
-            if not rank:
+            # ✅ 更新 rank（當遇到職級行）
+            detected = detect_rank(row_text)
+            if detected:
+                current_rank = detected
+
+            if not current_rank:
                 continue
 
+            # ✅ 檢查 shift
             for cell in row:
                 start = extract_time(cell)
 
                 if start:
-                    if any(x in str(cell).upper() for x in ["OFF","AL","TRN","HOLIDAY"]):
+                    if any(x in str(cell).upper() for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
                         continue
 
                     hour = start[:2] + ":00"
-                    records.append([hour, rank])
+
+                    records.append([hour, current_rank])
 
     if records:
         df_result = pd.DataFrame(records, columns=["Time","Rank"])
