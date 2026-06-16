@@ -9,13 +9,13 @@ uploaded_file = st.file_uploader("拖 Excel 入嚟", type=["xlsx","xlsm"])
 
 def extract_time(cell):
     if isinstance(cell, str):
-        match = re.search(r"(\\d{4})-(\\d{4})", cell)
-        if match:
-            return match.group(1)
+        m = re.search(r"(\\d{4})-(\\d{4})", cell)
+        if m:
+            return m.group(1)
     return None
 
 def detect_rank(text):
-    text = text.upper()
+    text = str(text).upper()
     if "SUP" in text:
         return "SUP"
     elif "SEQO" in text:
@@ -26,46 +26,54 @@ def detect_rank(text):
         return "CHR"
     return None
 
+def find_rank_upwards(df, row_idx, col_idx):
+    # ✅ 向上找 rank
+    for i in range(row_idx, -1, -1):
+        val = df.iat[i, col_idx]
+        r = detect_rank(val)
+        if r:
+            return r
+    return None
+
 if uploaded_file:
 
-    df_all = pd.read_excel(uploaded_file, sheet_name=None)
+    df_all = pd.read_excel(uploaded_file, sheet_name=None, header=None)
 
     records = []
 
-    for sheet, df in df_all.items():
-        
-        current_rank = None
+    for sheet_name, df in df_all.items():
 
-        for i, row in df.iterrows():
-            row_text = " ".join([str(x) for x in row.values])
+        rows, cols = df.shape
 
-            # ✅ 更新 rank（當遇到職級行）
-            detected = detect_rank(row_text)
-            if detected:
-                current_rank = detected
+        for r in range(rows):
+            for c in range(cols):
 
-            if not current_rank:
-                continue
+                cell = df.iat[r, c]
 
-            # ✅ 檢查 shift
-            for cell in row:
                 start = extract_time(cell)
 
                 if start:
-                    if any(x in str(cell).upper() for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
+                    cell_text = str(cell).upper()
+
+                    if any(x in cell_text for x in ["OFF","AL","TRN","HOLIDAY","S/HOLIDAY"]):
+                        continue
+
+                    rank = find_rank_upwards(df, r, c)
+
+                    if not rank:
                         continue
 
                     hour = start[:2] + ":00"
 
-                    records.append([hour, current_rank])
+                    records.append([hour, rank])
 
     if records:
-        df_result = pd.DataFrame(records, columns=["Time","Rank"])
+        result = pd.DataFrame(records, columns=["Time","Rank"])
 
-        pivot = df_result.pivot_table(index="Time",
-                                      columns="Rank",
-                                      aggfunc=len,
-                                      fill_value=0)
+        pivot = result.pivot_table(index="Time",
+                                   columns="Rank",
+                                   aggfunc=len,
+                                   fill_value=0)
 
         pivot["TOTAL"] = pivot.sum(axis=1)
         pivot = pivot.sort_index()
@@ -77,14 +85,7 @@ if uploaded_file:
             st.dataframe(pivot)
 
         with col2:
-            st.subheader("🔥 Peak Time")
+            st.subheader("🔥 Peak")
             st.success(pivot["TOTAL"].idxmax())
 
         st.subheader("📈 Trend")
-        st.line_chart(pivot["TOTAL"])
-
-        st.subheader("📊 Rank Distribution")
-        st.bar_chart(pivot.drop(columns=["TOTAL"]))
-
-    else:
-        st.warning("未讀到有效數據")
